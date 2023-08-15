@@ -109,8 +109,11 @@ def grab_col_names(dataframe, cat_th=10, car_th=25):
 
 cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
+len(num_cols)
 
 num_cols = [col for col in num_cols if col not in "Id"]
+
+num_cols = [col for col in num_cols if col not in "SalePrice"]
 
 
 for col in num_cols:
@@ -123,9 +126,7 @@ for col in cat_cols:
 for col in cat_cols:
     df[col] = df[col].astype("O")
 
-df["YrSold"] = df["YrSold"].astype("O")
 
-df["YrSold"].dtypes
 
 def cat_summary(dataframe, col_name, plot=False):
     print(pd.DataFrame({col_name: dataframe[col_name].value_counts(),
@@ -156,7 +157,7 @@ for col in num_cols:
     num_summary(df, col)
 
 
-
+df.head()
 
 def target_summary_with_cat(dataframe, target, categorical_col):
     print(pd.DataFrame({"TARGET_MEAN": dataframe.groupby(categorical_col)[target].mean()}), end="\n\n\n")
@@ -184,6 +185,8 @@ for col in num_cols:
     print(col, check_outlier(df, col))
 
 
+df.isnull().sum()
+
 def replace_with_thresholds(dataframe, variable):
     low_limit, up_limit = outlier_thresholds(dataframe, variable)
     dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
@@ -193,36 +196,50 @@ for col in num_cols:
     replace_with_thresholds(df, col)
 
 
+for col in num_cols:
+    print(col, check_outlier(df, col))
+
+
+
+df.isnull().sum().sort_values(ascending=False)
+
+
+for col in cat_cols:
+    df[col] = df[col].fillna(df[col].mode()[0])
+
+
+df = df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0)
+
 df.isnull().sum()
 
 
+def rare_analyser(dataframe: object, target: object, cat_cols: object) -> object:
+    for col in cat_cols:
+        print(col, ":", len(dataframe[col].value_counts()))
+        print(pd.DataFrame({"COUNT": dataframe[col].value_counts(),
+                            "RATIO": dataframe[col].value_counts() / len(dataframe),
+                            "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n\n")
 
 
+rare_analyser(df, "SalePrice", cat_cols)
 
 
+def rare_encoder(dataframe, rare_perc):
+    temp_df = dataframe.copy()
 
+    rare_columns = [col for col in temp_df.columns if temp_df[col].dtypes == 'O'
+                    and (temp_df[col].value_counts() / len(temp_df) < rare_perc).any(axis=None)]
 
+    for var in rare_columns:
+        tmp = temp_df[var].value_counts() / len(temp_df)
+        rare_labels = tmp[tmp < rare_perc].index
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), 'Rare', temp_df[var])
 
+    return temp_df
 
+new_df = rare_encoder(df, 0.01)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+rare_analyser(new_df, "SalePrice", cat_cols)
 
 
 
