@@ -1,24 +1,23 @@
 
-import warnings
+import eda as vahit
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from matplotlib import pyplot as plt
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
-from sklearn.model_selection import GridSearchCV, cross_validate, RandomizedSearchCV, validation_curve
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import LocalOutlierFactor
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
-from sklearn.metrics import classification_report, roc_auc_score
-from sklearn.model_selection import GridSearchCV, cross_validate
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import StandardScaler
-
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
 import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+from catboost import CatBoostRegressor
+from lightgbm import LGBMRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
+from xgboost import XGBRegressor
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import mean_squared_error
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split, cross_val_score,GridSearchCV
 
 
 pd.set_option('display.max_columns', None)
@@ -203,15 +202,44 @@ for col in num_cols:
 
 df.isnull().sum().sort_values(ascending=False)
 
+def missing_values_table(dataframe, na_name=False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+
+    print(missing_df, end="\n")
+
+    if na_name:
+        return na_columns
+
+
+missing_values_table(df)
+
+no_cols = ["Alley","BsmtQual","BsmtCond","BsmtExposure","BsmtFinType1","BsmtFinType2","FireplaceQu",
+           "GarageType","GarageFinish","GarageQual","GarageCond","PoolQC","Fence","MiscFeature"]
+
+df.isnull().sum().sort_values(ascending=False)
+
+
+for col in no_cols:
+    df[col].fillna("No",inplace=True)
 
 for col in cat_cols:
     df[col] = df[col].fillna(df[col].mode()[0])
 
+for col in num_cols:
+    df[col] = df[col].fillna((df[col].mean()))
 
-df = df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0)
 
 df.isnull().sum()
 
+df.info()
+
+df.head()
 
 def rare_analyser(dataframe: object, target: object, cat_cols: object) -> object:
     for col in cat_cols:
@@ -237,29 +265,223 @@ def rare_encoder(dataframe, rare_perc):
 
     return temp_df
 
-new_df = rare_encoder(df, 0.01)
+rare_encoder(df, 0.01)
 
-rare_analyser(new_df, "SalePrice", cat_cols)
-
-
+rare_analyser(df, "SalePrice", cat_cols)
 
 
+df["NEW_1st*GrLiv"] = df["1stFlrSF"] * df["GrLivArea"]
+
+df["NEW_Garage*GrLiv"] = (df["GarageArea"] * df["GrLivArea"])
+
+df["TotalQual"] = df[["OverallQual", "OverallCond", "ExterQual", "ExterCond", "BsmtCond", "BsmtFinType1",
+                      "BsmtFinType2", "HeatingQC", "KitchenQual", "Functional", "FireplaceQu", "GarageQual", "GarageCond", "Fence"]].sum(axis=1,numeric_only=True)
+
+
+# Total Floor
+df["NEW_TotalFlrSF"] = df["1stFlrSF"] + df["2ndFlrSF"] # 32
+
+# Total Finished Basement Area
+df["NEW_TotalBsmtFin"] = df.BsmtFinSF1 + df.BsmtFinSF2 # 56
+
+# Porch Area
+df["NEW_PorchArea"] = df.OpenPorchSF + df.EnclosedPorch + df.ScreenPorch + df["3SsnPorch"] + df.WoodDeckSF # 93
+
+# Total House Area
+df["NEW_TotalHouseArea"] = df.NEW_TotalFlrSF + df.TotalBsmtSF # 156
+
+df["NEW_TotalSqFeet"] = df.GrLivArea + df.TotalBsmtSF # 35
+
+
+# Lot Ratio
+df["NEW_LotRatio"] = df.GrLivArea / df.LotArea # 64
+
+df["NEW_RatioArea"] = df.NEW_TotalHouseArea / df.LotArea # 57
+
+df["NEW_GarageLotRatio"] = df.GarageArea / df.LotArea # 69
+
+# MasVnrArea
+df["NEW_MasVnrRatio"] = df.MasVnrArea / df.NEW_TotalHouseArea # 36
+
+# Dif Area
+df["NEW_DifArea"] = (df.LotArea - df["1stFlrSF"] - df.GarageArea - df.NEW_PorchArea - df.WoodDeckSF) # 73
+
+
+df["NEW_OverallGrade"] = df["OverallQual"] * df["OverallCond"] # 61
+
+df["NEW_Restoration"] = df.YearRemodAdd - df.YearBuilt # 31
+
+df["NEW_HouseAge"] = df.YrSold - df.YearBuilt # 73
+
+df["NEW_RestorationAge"] = df.YrSold - df.YearRemodAdd # 40
+
+df["NEW_GarageAge"] = df.GarageYrBlt - df.YearBuilt # 17
+
+df["NEW_GarageRestorationAge"] = np.abs(df.GarageYrBlt - df.YearRemodAdd) # 30
+
+df["NEW_GarageSold"] = df.YrSold - df.GarageYrBlt # 48
+
+
+drop_list = ["Street", "Alley", "LandContour", "Utilities", "LandSlope","Heating", "PoolQC", "MiscFeature","Neighborhood"]
+
+# drop_list'teki değişkenlerin düşürülmesi
+df.drop(drop_list, axis=1, inplace=True)
+
+
+df.shape
+
+
+cat_cols, cat_but_car, num_cols = grab_col_names(df)
+
+
+def label_encoder(dataframe, binary_col):
+    labelencoder = LabelEncoder()
+    dataframe[binary_col] = labelencoder.fit_transform(dataframe[binary_col])
+    return dataframe
+
+binary_cols = [col for col in df.columns if df[col].dtypes == "O" and len(df[col].unique()) == 2]
+
+for col in binary_cols:
+    label_encoder(df, col)
+
+def one_hot_encoder(dataframe, categorical_cols, drop_first=False):
+    dataframe = pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_first)
+    return dataframe
+
+df = one_hot_encoder(df, cat_cols, drop_first=True)
+
+
+df.shape
+
+
+dc = df.copy()
+
+
+train_df = df[df['SalePrice'].notnull()]
+test_df = df[df['SalePrice'].isnull()]
+
+y = train_df['SalePrice'] # np.log1p(df['SalePrice'])
+X = train_df.drop(["Id", "SalePrice"], axis=1)
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=17)
+
+models = [('LR', LinearRegression()),
+          #("Ridge", Ridge()),
+          #("Lasso", Lasso()),
+          #("ElasticNet", ElasticNet()),
+          ('KNN', KNeighborsRegressor()),
+          ('CART', DecisionTreeRegressor()),
+          ('RF', RandomForestRegressor()),
+          #('SVR', SVR()),
+          ('GBM', GradientBoostingRegressor()),
+          ("XGBoost", XGBRegressor(objective='reg:squarederror')),
+          ("LightGBM", LGBMRegressor(verbose=-1)),
+          ("CatBoost", CatBoostRegressor(verbose=False))]
+
+for name, regressor in models:
+    rmse = np.mean(np.sqrt(-cross_val_score(regressor, X, y, cv=5, scoring="neg_mean_squared_error")))
+    print(f"RMSE: {round(rmse, 4)} ({name}) ")
+
+df.info()
+
+df['SalePrice'].mean()
+df['SalePrice'].std()
+
+#####################################################################################
 
 
 
+train_df = df[df['SalePrice'].notnull()]
+test_df = df[df['SalePrice'].isnull()]
+
+y = np.log1p(train_df['SalePrice'])
+X = train_df.drop(["Id", "SalePrice"], axis=1)
+
+# Verinin eğitim ve tet verisi olarak bölünmesi
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=17)
+
+
+# lgbm_tuned = LGBMRegressor(**lgbm_gs_best.best_params_).fit(X_train, y_train)
+
+lgbm = LGBMRegressor().fit(X_train, y_train)
+y_pred = lgbm.predict(X_test)
+
+y_pred
+# Yapılan LOG dönüşümünün tersinin (inverse'nin) alınması
+new_y = np.expm1(y_pred)
+new_y
+new_y_test = np.expm1(y_test)
+new_y_test
+
+np.sqrt(mean_squared_error(new_y_test, new_y))
+
+# RMSE : 23660.849731631293
+
+
+##################
+# hiperparametre optimizasyonlarını gerçekleştiriniz.
+##################
+
+
+lgbm_model = LGBMRegressor(random_state=46)
+
+rmse = np.mean(np.sqrt(-cross_val_score(lgbm_model, X, y, cv=5, scoring="neg_mean_squared_error")))
+
+
+lgbm_params = {"learning_rate": [0.01, 0.1],
+               "n_estimators": [500, 1500],
+               "colsample_bytree": [0.5, 0.7, 1]
+             }
+
+lgbm_gs_best = GridSearchCV(lgbm_model,
+                            lgbm_params,
+                            cv=3,
+                            n_jobs=-1,
+                            verbose=True).fit(X, y)
+
+final_model = lgbm_model.set_params(**lgbm_gs_best.best_params_).fit(X, y)
+
+rmse = np.mean(np.sqrt(-cross_val_score(final_model, X, y, cv=5, scoring="neg_mean_squared_error")))
 
 
 
+################################################################
+# Değişkenlerin önem düzeyini belirten feature_importance fonksiyonunu kullanarak özelliklerin sıralamasını çizdiriniz.
+################################################################
+
+# feature importance
+def plot_importance(model, features, num=len(X), save=False):
+
+    feature_imp = pd.DataFrame({"Value": model.feature_importances_, "Feature": features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value", ascending=False)[0:num])
+    plt.title("Features")
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig("importances.png")
+
+model = LGBMRegressor()
+model.fit(X, y)
+
+plot_importance(model, X,num=20)
 
 
 
+########################################
+# test dataframeindeki boş olan salePrice değişkenlerini tahminleyiniz ve
+# Kaggle sayfasına submit etmeye uygun halde bir dataframe oluşturunuz. (Id, SalePrice)
+########################################
 
+model = LGBMRegressor()
+model.fit(X, y)
+predictions = model.predict(test_df.drop(["Id","SalePrice"], axis=1))
 
-
-
-
-
-
+dictionary = {"Id":test_df["Id"].astype(int), "SalePrice":predictions}
+dfSubmission = pd.DataFrame(dictionary)
+dfSubmission.to_csv("housepricePredictions.csv", index=False)
 
 
 
